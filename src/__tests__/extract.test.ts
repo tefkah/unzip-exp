@@ -43,10 +43,10 @@ describe("extract", () => {
 		expect(ourFiles.length).toBe(referenceFiles.length);
 
 		const ourRelative = ourFiles.map((f) =>
-			f.replace(TEST_OUTPUT_DIR + "/", ""),
+			f.replace(`${TEST_OUTPUT_DIR}/`, ""),
 		);
 		const refRelative = referenceFiles.map((f) =>
-			f.replace(REFERENCE_OUTPUT_DIR + "/", ""),
+			f.replace(`${REFERENCE_OUTPUT_DIR}/`, ""),
 		);
 
 		expect(ourRelative).toEqual(refRelative);
@@ -61,11 +61,11 @@ describe("extract", () => {
 		const referenceFiles = await getAllFiles(REFERENCE_OUTPUT_DIR);
 
 		for (const refFile of referenceFiles) {
-			const relativePath = refFile.replace(REFERENCE_OUTPUT_DIR + "/", "");
+			const relativePath = refFile.replace(`${REFERENCE_OUTPUT_DIR}/`, "");
 			const ourFile = join(TEST_OUTPUT_DIR, relativePath);
 
 			const refStats = await stat(refFile);
-			const ourStats = await stat(ourFile);
+			const _ourStats = await stat(ourFile);
 
 			if (!refStats.isDirectory()) {
 				const refContent = await readFile(refFile);
@@ -133,7 +133,7 @@ describe("extract", () => {
 		const referenceFiles = await getAllFiles(REFERENCE_OUTPUT_DIR);
 
 		for (const refFile of referenceFiles) {
-			const relativePath = refFile.replace(REFERENCE_OUTPUT_DIR + "/", "");
+			const relativePath = refFile.replace(`${REFERENCE_OUTPUT_DIR}/`, "");
 			const ourFile = join(TEST_OUTPUT_DIR, relativePath);
 
 			const refStats = await stat(refFile);

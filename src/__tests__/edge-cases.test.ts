@@ -1,10 +1,15 @@
-import { rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { extract } from "../stream-extractor.js";
 import AdmZip from "adm-zip";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { extract } from "../stream-extractor.js";
 
-const TEST_OUTPUT_DIR = join(process.cwd(), "src", "__tests__", "__edge_output__");
+const TEST_OUTPUT_DIR = join(
+	process.cwd(),
+	"src",
+	"__tests__",
+	"__edge_output__",
+);
 const TEST_ZIPS_DIR = join(process.cwd(), "src", "__tests__", "__test_zips__");
 
 describe("edge cases", () => {
@@ -146,4 +151,3 @@ describe("edge cases", () => {
 		expect(true).toBe(true);
 	});
 });
-

@@ -1,8 +1,8 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, open } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, open, readFile } from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { createInflateRaw } from "node:zlib";
+import { crc32, createInflateRaw } from "node:zlib";
 import {
 	COMPRESSION_DEFLATE,
 	COMPRESSION_STORED,
@@ -133,13 +133,38 @@ function findEndOfCentralDirectory(buffer: Buffer): number {
 	return -1;
 }
 
+function sanitizePath(filename: string, outputPath: string): string {
+	// remove leading slashes and normalize
+	const normalizedFilename = filename.replace(/^[/\\]+/, "");
+
+	// check for any parent directory references
+	if (normalizedFilename.includes("..")) {
+		throw new Error(`Path traversal attempt detected: ${filename}`);
+	}
+
+	// resolve the full path
+	const targetPath = resolve(outputPath, normalizedFilename);
+	const resolvedOutputPath = resolve(outputPath);
+
+	// ensure the target path is within the output directory
+	const relativePath = relative(resolvedOutputPath, targetPath);
+	if (
+		relativePath.startsWith(`..${sep}`) ||
+		relativePath.startsWith(`..${sep === "/" ? "\\" : "/"}`)
+	) {
+		throw new Error(`Path traversal attempt detected: ${filename}`);
+	}
+
+	return targetPath;
+}
+
 async function extractEntry(
 	fileHandle: import("fs/promises").FileHandle,
 	entry: ZipEntry,
 	outputPath: string,
 	_overwrite: boolean,
 ): Promise<void> {
-	const targetPath = join(outputPath, entry.filename);
+	const targetPath = sanitizePath(entry.filename, outputPath);
 
 	const localHeaderBuffer = Buffer.allocUnsafe(LOCAL_FILE_HEADER_SIZE);
 	await fileHandle.read(
@@ -155,6 +180,10 @@ async function extractEntry(
 	if (entry.compressedSize === 0) {
 		const writeStream = createWriteStream(targetPath);
 		writeStream.end();
+		// validate empty file crc
+		if (entry.crc32 !== 0) {
+			await validateCrc32(targetPath, entry.crc32, 0);
+		}
 		return;
 	}
 
@@ -172,6 +201,10 @@ async function extractEntry(
 
 	if (entry.compressionMethod === COMPRESSION_STORED) {
 		await pipeline(readStream, writeStream);
+		// only validate crc if size > 0 to avoid reading empty files
+		if (entry.uncompressedSize > 0) {
+			await validateCrc32(targetPath, entry.crc32, entry.uncompressedSize);
+		}
 		return;
 	}
 
@@ -180,10 +213,35 @@ async function extractEntry(
 			chunkSize: 64 * 1024,
 		});
 		await pipeline(readStream, inflateStream, writeStream);
+		// only validate crc if size > 0 to avoid reading empty files
+		if (entry.uncompressedSize > 0) {
+			await validateCrc32(targetPath, entry.crc32, entry.uncompressedSize);
+		}
 		return;
 	}
 
 	throw new Error(`Unsupported compression method: ${entry.compressionMethod}`);
+}
+
+async function validateCrc32(
+	filePath: string,
+	expectedCrc: number,
+	expectedSize: number,
+): Promise<void> {
+	const buffer = await readFile(filePath);
+
+	if (buffer.length !== expectedSize) {
+		throw new Error(
+			`Size mismatch for ${filePath}: expected ${expectedSize}, got ${buffer.length}`,
+		);
+	}
+
+	const actualCrc = crc32(buffer);
+	if (actualCrc !== expectedCrc) {
+		throw new Error(
+			`CRC32 mismatch for ${filePath}: expected ${expectedCrc}, got ${actualCrc}`,
+		);
+	}
 }
 
 // simplified api for common case
