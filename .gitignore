@@ -148,3 +148,5 @@ src/__bench__/output
 src/__tests__/__output__
 src/__tests__/__reference__
 # __bench__
+
+!src/__bench__/output/.gitkeep

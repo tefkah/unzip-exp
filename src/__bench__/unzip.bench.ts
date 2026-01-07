@@ -4,11 +4,13 @@ import { dirname, join } from "node:path";
 import util from "node:util";
 import AdmZip from "adm-zip";
 import extractZip from "extract-zip";
-import { bench } from "vitest";
+import { afterAll, beforeAll, bench, describe } from "vitest";
 import yauzl from "yauzl";
 import { extract } from "../index.js";
 
 const EPUB_PATH = new URL("./Moby.epub", import.meta.url).pathname;
+const MANY_TINY_FILES_PATH = new URL("./many-tiny-files.zip", import.meta.url)
+	.pathname;
 
 const OUTPUT_BASE = new URL("./output", import.meta.url).pathname;
 
@@ -41,6 +43,17 @@ async function setupOutput(testName: string) {
 	await mkdir(outputDir, { recursive: true });
 	return outputDir;
 }
+
+const testCases = [
+	"yauzl (streaming)",
+	"our-impl (streaming)",
+	"adm-zip (buffer)",
+	"extract-zip (buffer)",
+] as const;
+
+type TestCase = (typeof testCases)[number];
+const getOutputDir = (testCase: TestCase) => join(OUTPUT_BASE, testCase);
+
 // bench(
 // 	"unzipper (streaming)",
 // 	async () => {
@@ -59,81 +72,157 @@ async function setupOutput(testName: string) {
 // 	{ iterations: 1, warmupIterations: 0 },
 // );
 
-bench(
-	"yauzl (streaming)",
-	async () => {
-		const outputDir = await setupOutput("yauzl");
+async function unzipYauzl(inputPath: string, outputDir: string) {
+	const zipfile = await promisify<
+		string,
+		{ lazyEntries: boolean },
+		yauzl.ZipFile
+	>(yauzl.open.bind(yauzl))(inputPath, { lazyEntries: true });
 
-		const zipfile = await promisify<
-			string,
-			{ lazyEntries: boolean },
-			yauzl.ZipFile
-		>(yauzl.open.bind(yauzl))(EPUB_PATH, { lazyEntries: true });
+	const { promise, resolve } = Promise.withResolvers<void>();
 
-		const { promise, resolve } = Promise.withResolvers<void>();
-
-		zipfile.on("end", () => {
-			resolve();
-		});
-		const openReadStream = util.promisify(zipfile.openReadStream.bind(zipfile));
-		zipfile.readEntry();
-		zipfile.on("entry", async (entry) => {
-			if (entry.fileName.endsWith("/")) {
-				// Directory file names end with '/'.
-				// Note that entries for directories themselves are optional.
-				// An entry's fileName implicitly requires its parent directories to exist.
-				zipfile.readEntry();
-			} else {
+	zipfile.on("end", () => {
+		resolve();
+	});
+	const openReadStream = util.promisify(zipfile.openReadStream.bind(zipfile));
+	zipfile.readEntry();
+	zipfile.on("entry", async (entry) => {
+		if (entry.fileName.endsWith("/")) {
+			// Directory file names end with '/'.
+			// Note that entries for directories themselves are optional.
+			// An entry's fileName implicitly requires its parent directories to exist.
+			zipfile.readEntry();
+		} else {
+			const writePath = join(outputDir, entry.fileName);
+			const readStream = await openReadStream(entry);
+			await mkdir(dirname(writePath), { recursive: true });
+			// file entry
+			await new Promise<void>((resolvePipe) => {
 				const writePath = join(outputDir, entry.fileName);
-				const readStream = await openReadStream(entry);
-				await mkdir(dirname(writePath), { recursive: true });
-				// file entry
-				await new Promise<void>((resolvePipe) => {
-					const writePath = join(outputDir, entry.fileName);
-					const writeStream = createWriteStream(writePath);
-					writeStream.on("finish", () => {
-						resolvePipe();
-					});
-					readStream.pipe(writeStream);
-				}).finally(() => {
-					zipfile.readEntry();
+				const writeStream = createWriteStream(writePath);
+				writeStream.on("finish", () => {
+					resolvePipe();
 				});
-			}
-		});
-		await promise;
+				readStream.pipe(writeStream);
+			}).finally(() => {
+				zipfile.readEntry();
+			});
+		}
+	});
+	await promise;
+}
 
-		await cleanupOutput("yauzl");
-	},
-	{ iterations: 1, warmupIterations: 0 },
-);
+async function unzipOurImpl(inputPath: string, outputDir: string) {
+	await extract(inputPath, outputDir);
+}
 
-bench(
-	"our implementation (streaming)",
-	async () => {
-		const outputDir = await setupOutput("our-impl");
-		await extract(EPUB_PATH, outputDir);
-		await cleanupOutput("our-impl");
-	},
-	{ iterations: 1, warmupIterations: 0 },
-);
+async function unzipAdmZip(inputPath: string, outputDir: string) {
+	const zip = new AdmZip(inputPath);
+	zip.extractAllTo(outputDir, true);
+}
 
-bench(
-	"adm-zip (buffer)",
-	async () => {
-		const outputDir = await setupOutput("adm-zip");
-		const zip = new AdmZip(EPUB_PATH);
-		zip.extractAllTo(outputDir, true);
-		await cleanupOutput("adm-zip");
-	},
-	{ iterations: 1, warmupIterations: 0 },
-);
+async function unzipExtractZip(inputPath: string, outputDir: string) {
+	await extractZip(inputPath, { dir: outputDir });
+}
 
-bench(
-	"extract-zip (buffer)",
-	async () => {
-		const outputDir = await setupOutput("extract-zip");
-		await extractZip(EPUB_PATH, { dir: outputDir });
-		await cleanupOutput("extract-zip");
-	},
-	{ iterations: 1, warmupIterations: 0 },
-);
+describe("unzip many tiny files", () => {
+	beforeAll(async () => {
+		for (const testCase of testCases) {
+			await cleanupOutput(testCase);
+			await setupOutput(testCase);
+		}
+	});
+
+	afterAll(async () => {
+		// todo: validate whether outputs are the same
+		for (const testCase of testCases) {
+			await cleanupOutput(testCase);
+		}
+	});
+
+	bench(
+		"yauzl (streaming)",
+		async () => {
+			await unzipYauzl(MANY_TINY_FILES_PATH, getOutputDir("yauzl (streaming)"));
+		},
+		{ iterations: 3, warmupIterations: 0 },
+	);
+
+	bench(
+		"our implementation (streaming)",
+		async () => {
+			await unzipOurImpl(
+				MANY_TINY_FILES_PATH,
+				getOutputDir("our-impl (streaming)"),
+			);
+		},
+		{ iterations: 3, warmupIterations: 0 },
+	);
+
+	bench(
+		"adm-zip (buffer)",
+		async () => {
+			await unzipAdmZip(MANY_TINY_FILES_PATH, getOutputDir("adm-zip (buffer)"));
+		},
+		{ iterations: 3, warmupIterations: 0 },
+	);
+
+	bench(
+		"extract-zip (buffer)",
+		async () => {
+			await unzipExtractZip(
+				MANY_TINY_FILES_PATH,
+				getOutputDir("extract-zip (buffer)"),
+			);
+		},
+		{ iterations: 3, warmupIterations: 0 },
+	);
+});
+
+describe("unzip large", () => {
+	beforeAll(async () => {
+		for (const testCase of testCases) {
+			await cleanupOutput(testCase);
+			await setupOutput(testCase);
+		}
+	});
+
+	afterAll(async () => {
+		for (const testCase of testCases) {
+			await cleanupOutput(testCase);
+		}
+	});
+
+	bench(
+		"yauzl (streaming)",
+		async () => {
+			await unzipYauzl(EPUB_PATH, getOutputDir("yauzl (streaming)"));
+			// await cleanupOutput("yauzl");
+		},
+		{ iterations: 3, warmupIterations: 0 },
+	);
+
+	bench(
+		"our implementation (streaming)",
+		async () => {
+			await unzipOurImpl(EPUB_PATH, getOutputDir("our-impl (streaming)"));
+		},
+		{ iterations: 3, warmupIterations: 0 },
+	);
+
+	bench(
+		"adm-zip (buffer)",
+		async () => {
+			await unzipAdmZip(EPUB_PATH, getOutputDir("adm-zip (buffer)"));
+		},
+		{ iterations: 3, warmupIterations: 0 },
+	);
+
+	bench(
+		"extract-zip (buffer)",
+		async () => {
+			await unzipExtractZip(EPUB_PATH, getOutputDir("extract-zip (buffer)"));
+		},
+		{ iterations: 3, warmupIterations: 0 },
+	);
+});
