@@ -9,7 +9,7 @@ import yauzl from "yauzl";
 import { extract } from "../index.js";
 
 const EPUB_PATH = new URL("./Moby.epub", import.meta.url).pathname;
-const MANY_TINY_FILES_PATH = new URL("./many-tiny-files.zip", import.meta.url)
+const MANY_TINY_FILES_PATH = new URL("./many_tiny_files.zip", import.meta.url)
 	.pathname;
 
 const OUTPUT_BASE = new URL("./output", import.meta.url).pathname;
@@ -141,7 +141,7 @@ describe("unzip many tiny files", () => {
 	});
 
 	bench(
-		"yauzl (streaming)",
+		"tiny files: yauzl (streaming)",
 		async () => {
 			await unzipYauzl(MANY_TINY_FILES_PATH, getOutputDir("yauzl (streaming)"));
 		},
@@ -149,7 +149,7 @@ describe("unzip many tiny files", () => {
 	);
 
 	bench(
-		"our implementation (streaming)",
+		"tiny files: our implementation (streaming)",
 		async () => {
 			await unzipOurImpl(
 				MANY_TINY_FILES_PATH,
@@ -160,7 +160,7 @@ describe("unzip many tiny files", () => {
 	);
 
 	bench(
-		"adm-zip (buffer)",
+		"tiny files: adm-zip (buffer)",
 		async () => {
 			await unzipAdmZip(MANY_TINY_FILES_PATH, getOutputDir("adm-zip (buffer)"));
 		},
@@ -168,7 +168,7 @@ describe("unzip many tiny files", () => {
 	);
 
 	bench(
-		"extract-zip (buffer)",
+		"tiny files: extract-zip (buffer)",
 		async () => {
 			await unzipExtractZip(
 				MANY_TINY_FILES_PATH,
@@ -194,7 +194,7 @@ describe("unzip large", () => {
 	});
 
 	bench(
-		"yauzl (streaming)",
+		"large: yauzl (streaming)",
 		async () => {
 			await unzipYauzl(EPUB_PATH, getOutputDir("yauzl (streaming)"));
 			// await cleanupOutput("yauzl");
@@ -203,7 +203,7 @@ describe("unzip large", () => {
 	);
 
 	bench(
-		"our implementation (streaming)",
+		"large: our implementation (streaming)",
 		async () => {
 			await unzipOurImpl(EPUB_PATH, getOutputDir("our-impl (streaming)"));
 		},
@@ -211,7 +211,7 @@ describe("unzip large", () => {
 	);
 
 	bench(
-		"adm-zip (buffer)",
+		"large: adm-zip (buffer)",
 		async () => {
 			await unzipAdmZip(EPUB_PATH, getOutputDir("adm-zip (buffer)"));
 		},
@@ -219,7 +219,7 @@ describe("unzip large", () => {
 	);
 
 	bench(
-		"extract-zip (buffer)",
+		"large: extract-zip (buffer)",
 		async () => {
 			await unzipExtractZip(EPUB_PATH, getOutputDir("extract-zip (buffer)"));
 		},
