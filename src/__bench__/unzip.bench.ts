@@ -1,16 +1,16 @@
-import AdmZip from "adm-zip";
-import extractZip from "extract-zip";
 import { createWriteStream } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import util from "node:util";
+import AdmZip from "adm-zip";
+import extractZip from "extract-zip";
 import { bench } from "vitest";
 import yauzl from "yauzl";
 import { extract } from "../index.js";
 
 const EPUB_PATH = new URL("./Moby.epub", import.meta.url).pathname;
 
-const OUTPUT_BASE = join(process.cwd(), "__bench__", "output");
+const OUTPUT_BASE = new URL("./output", import.meta.url).pathname;
 
 function promisify<Arg, Options, Return>(
 	api: (
